@@ -1,4 +1,5 @@
-const { default: makeWASocket, DisconnectReason, useMultiFileAuthState } = require('@whiskeysockets/baileys');
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require("baileys");
+const qrcode = require('qrcode-terminal');
 const { Boom } = require('@hapi/boom');
 const { grupos } = require('./comandos/grupos');
 const { interacao } = require('./comandos/interacao');
@@ -9,6 +10,7 @@ const { dono } = require('./comandos/dono');
 const { listanegra } = require('./comandos/listanegra');
 const { aniver } = require('./comandos/aniver');
 const { equipe } = require('./comandos/equipe');
+const { mensagens } = require('./comandos/mensagens');
 const { menu } = require('./lib/menu');
 const { guia } = require('./lib/guia');
 const { filtro, verificarGrupos } = require('./lib/filtro');
@@ -87,18 +89,25 @@ async function connectToWhatsApp() {
     sock.ev.on('creds.update', saveCreds);
 
     // Gerenciamento de conexão
-    sock.ev.on('connection.update', (update) => {
-        const { connection, lastDisconnect } = update;
-        if (connection === 'close') {
-            const shouldReconnect = (lastDisconnect.error instanceof Boom) && 
-                                  lastDisconnect.error.output.statusCode !== DisconnectReason.loggedOut;
-            if (shouldReconnect) {
-                connectToWhatsApp();
-            }
-        } else if (connection === 'open') {
-            console.log('LOLA CONECTADA!');
+sock.ev.on('connection.update', (update) => {
+    const { connection, lastDisconnect, qr } = update;
+    
+    if(qr) {
+        // Gera e exibe o QR code no terminal
+        qrcode.generate(qr, {small: true});
+        console.log('Escaneie o QR Code acima para conectar!');
+    }
+
+    if (connection === 'close') {
+        const shouldReconnect = (lastDisconnect.error instanceof Boom) && 
+                              lastDisconnect.error.output.statusCode !== DisconnectReason.loggedOut;
+        if (shouldReconnect) {
+            connectToWhatsApp();
         }
-    });
+    } else if (connection === 'open') {
+        console.log('LOLA CONECTADA!');
+    }
+});
 
     // Gerenciamento de mensagens
     sock.ev.on('messages.upsert', async ({ messages }) => {
@@ -131,6 +140,7 @@ async function connectToWhatsApp() {
                 aniver(sock, message, messageInfo),
                 equipe(sock, message, messageInfo),
                 filtro(sock, message, messageInfo),
+                mensagens(sock, message, messageInfo),
                 ia(sock, message, messageInfo)
             ]);
 
