@@ -1,4 +1,4 @@
-const { Message, Buttons, Client, MessageMedia, downloadMediaMessage, MessageType } = require('@whiskeysockets/baileys');
+const { Message, Buttons, Client, MessageMedia, downloadMediaMessage, MessageType } = require("baileys");
 const { verificarAdmin, verificarDono, verificarGrupo, verificarBotAdmin } = require('../lib/privilegios');
 const messages = require('../lib/msg');
 const pool = require('../lib/bd');
