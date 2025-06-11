@@ -1,4 +1,4 @@
-const { Message, Buttons, Client, MessageMedia, downloadMediaMessage } = require('@whiskeysockets/baileys');
+const { Message, Buttons, Client, MessageMedia, downloadMediaMessage } = require("baileys");
 const { verificarAdmin, verificarDono } = require('../lib/privilegios');
 const pool = require('../lib/bd');
 const messages = require('../lib/msg');
@@ -108,8 +108,8 @@ if (await verificarAdmin(sock, message, messageInfo)) {
 
             await sock.sendMessage(message.key.remoteJid, {
                 text: 'Casal adicionado com sucesso! ❤️',
-                quoted: message
-            });
+            }, { quoted: message }); // Adiciona quoted aqui também
+            return;
 
         } catch (error) {
             console.error('Erro ao adicionar casal:', error);
@@ -170,7 +170,15 @@ if (messageContent === '!listarcasais') {
         casais.forEach((casal, index) => {
             const [pessoa1, pessoa2] = casal.split('/');
             if (pessoa1 && pessoa2) {
-                mensagem += `@${pessoa1.split('@')[0]} + @${pessoa2.split('@')[0]}\n`;
+                // Extrai o número de telefone (removendo o @s.whatsapp.net)
+                const numero1 = pessoa1.split('@')[0];
+                const numero2 = pessoa2.split('@')[0];
+                
+                // Adiciona cada pessoa em uma linha separada
+                mensagem += `@${numero1} - ${numero1}\n`;
+                mensagem += `@${numero2} - ${numero2}\n\n`; // Adiciona linha em branco após cada casal
+                
+                // Adiciona as menções
                 mentions.push(pessoa1);
                 mentions.push(pessoa2);
             }
@@ -180,8 +188,8 @@ if (messageContent === '!listarcasais') {
         await sock.sendMessage(message.key.remoteJid, {
             text: mensagem,
             mentions: mentions,
-            quoted: message
-        });
+            }, { quoted: message }); // Adiciona quoted aqui também
+            return;
 
     } catch (error) {
         console.error('Erro ao listar casais:', error);
@@ -194,63 +202,62 @@ if (messageContent === '!listarcasais') {
 
 
 if (messageContent.startsWith('!rcasal')) {
-if (await verificarAdmin(sock, message, messageInfo)) {
-    try {
+    if (await verificarAdmin(sock, message, messageInfo)) {
+        try {
+            const chatId = message.key.remoteJid;
+            const groupId = chatId.replace('@g.us', '');
+            const fileName = `${groupId}.txt`;
+            const filePath = path.join(__dirname, '..', 'media', 'casais', fileName);
 
-        const chatId = message.key.remoteJid;
-        const groupId = chatId.replace('@g.us', '');
-        const fileName = `${groupId}.txt`;
-        const filePath = path.join(__dirname, '..', 'media', 'casais', fileName);
-
-        // Pega a menção após o comando
-        const mentioned = message.message.extendedTextMessage?.contextInfo?.mentionedJid[0];
-        
-        if (!mentioned) {
-            await sock.sendMessage(chatId, {
-                text: 'Você precisa mencionar um dos membros do casal. Use: !rcasal @pessoa',
-                quoted: message
-            });
-            return;
-        }
-
-        if (fs.existsSync(filePath)) {
-            let fileContent = fs.readFileSync(filePath, 'utf8');
-            const lines = fileContent.split('\n');
+            // Extrai o número de telefone do comando
+            const args = messageContent.split(' ');
+            const phoneNumber = args[1]?.trim();
             
-            // Encontra a linha que contém a pessoa mencionada
-            const personNumber = mentioned.replace('@s.whatsapp.net', '');
-            const lineToRemove = lines.find(line => line.includes(personNumber));
-
-            if (lineToRemove) {
-                // Remove a linha do casal
-                const updatedLines = lines.filter(line => line !== lineToRemove);
-                fs.writeFileSync(filePath, updatedLines.join('\n'));
-                
+            if (!phoneNumber) {
                 await sock.sendMessage(chatId, {
-                    text: '✅ Casal removido com sucesso!',
+                    text: 'Você precisa fornecer um número de telefone. Use: !rcasal NÚMERO',
                     quoted: message
                 });
+                return;
+            }
+
+            if (fs.existsSync(filePath)) {
+                let fileContent = fs.readFileSync(filePath, 'utf8');
+                const lines = fileContent.split('\n');
+                
+                // Encontra a linha que contém o número de telefone fornecido
+                const lineToRemove = lines.find(line => line.includes(phoneNumber));
+
+                if (lineToRemove) {
+                    // Remove a linha do casal
+                    const updatedLines = lines.filter(line => line !== lineToRemove);
+                    fs.writeFileSync(filePath, updatedLines.join('\n'));
+                    
+                    await sock.sendMessage(chatId, {
+                        text: '✅ Casal removido com sucesso!',
+                        }, { quoted: message }); // Adiciona quoted aqui também
+                        return;
+                } else {
+                    await sock.sendMessage(chatId, {
+                        text: '❌ Este número não está em nenhum casal registrado.',
+                        quoted: message
+                    });
+                }
             } else {
                 await sock.sendMessage(chatId, {
-                    text: '❌ Esta pessoa não está em nenhum casal registrado.',
+                    text: '❌ Não há casais registrados neste grupo.',
                     quoted: message
                 });
             }
-        } else {
-            await sock.sendMessage(chatId, {
-                text: '❌ Não há casais registrados neste grupo.',
+
+        } catch (error) {
+            console.error('Erro ao remover casal:', error);
+            await sock.sendMessage(message.key.remoteJid, {
+                text: '❌ Ocorreu um erro ao remover o casal.',
                 quoted: message
             });
         }
-
-    } catch (error) {
-        console.error('Erro ao remover casal:', error);
-        await sock.sendMessage(message.key.remoteJid, {
-            text: '❌ Ocorreu um erro ao remover o casal.',
-            quoted: message
-        });
     }
-}
 }
 
 
@@ -285,7 +292,9 @@ if (await verificarAdmin(sock, message, messageInfo)) {
         await sock.sendMessage(message.key.remoteJid, {
             text: mentionMessage,
             mentions: [chosenParticipant]
-        });
+            }, { quoted: message }); // Adiciona quoted aqui também
+            return;
+
 
     } catch (error) {
         console.error('Erro ao executar comando !sortear:', error);
