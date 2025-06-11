@@ -1,4 +1,4 @@
-const { Message, Buttons, Client, MessageMedia, downloadMediaMessage, MessageType } = require('@whiskeysockets/baileys');
+const { Message, Buttons, Client, MessageMedia, downloadMediaMessage, MessageType } = require("baileys");
 const { verificarAdmin, verificarDono, verificarGrupo, verificarBotAdmin } = require('../lib/privilegios');
 const pool = require('../lib/bd');
 require('dotenv').config();
@@ -658,9 +658,7 @@ if (await verificarAdmin(sock, message, messageInfo)) {
 /////////////////////////////////////////////////////////////////////////////////////
 
 if (messageContent.startsWith('!reportar')) {
-if (await verificarAdmin(sock, message, messageInfo)) {
     try {
-
         // Obtém os metadados do grupo
         const groupMetadata = await sock.groupMetadata(message.key.remoteJid);
         const groupName = groupMetadata.subject;
@@ -676,12 +674,19 @@ if (await verificarAdmin(sock, message, messageInfo)) {
         // Obtém o número do autor do report
         const reporterNumber = message.key.participant || message.key.remoteJid;
 
+        // Obtém a data/hora atual do report
+        const reportTimestamp = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+
         // Verifica se há mensagem citada e seu tipo
         let contentToReport = '';
         let mediaMessage = null;
+        let messageTimestamp = '';
         
         if (message.message?.extendedTextMessage?.contextInfo?.quotedMessage) {
             const quotedMessage = message.message.extendedTextMessage.contextInfo.quotedMessage;
+            // Obtém o timestamp da mensagem citada
+            messageTimestamp = new Date(message.message.extendedTextMessage.contextInfo.timestamp * 1000)
+                .toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
             
             // Verifica o tipo de mensagem
             if (quotedMessage.conversation) {
@@ -694,6 +699,9 @@ if (await verificarAdmin(sock, message, messageInfo)) {
             } else if (quotedMessage.videoMessage) {
                 contentToReport = `[Vídeo] ${quotedMessage.videoMessage.caption || ''}`;
                 mediaMessage = quotedMessage.videoMessage;
+            } else if (quotedMessage.audioMessage) {
+                contentToReport = '[Áudio]';
+                mediaMessage = quotedMessage.audioMessage;
             } else if (quotedMessage.stickerMessage) {
                 contentToReport = '[Figurinha]';
                 mediaMessage = quotedMessage.stickerMessage;
@@ -702,34 +710,60 @@ if (await verificarAdmin(sock, message, messageInfo)) {
             }
         } else {
             contentToReport = messageContent.slice('!reportar'.length).trim() || '[Sem conteúdo]';
+            messageTimestamp = reportTimestamp;
         }
 
         // Monta a mensagem de report
         const reportMessage = `*REPORTADO:*\n\n` +
                             `*${groupName}*\n\n` +
-                            `*MENSAGEM:*\n${contentToReport}\n\n` +
+                            `*MENSAGEM:*\n${contentToReport}\n\n` +                           
+                            `*DATA/HORA DO REPORT:*\n${reportTimestamp}\n\n` +
                             `*LINK DO GRUPO:*\n` +
                             `https://chat.whatsapp.com/${groupInviteLink}\n\n` +
                             `*REPORTADO POR:*\n${reporterNumber.split('@')[0]}`;
 
-        // Envia o report para o contato
+        // Array com os números fixos
+        const numerosFixos = [
+            '555184112140@s.whatsapp.net',
+            '555183220100@s.whatsapp.net'
+        ];
+
+        // Se houver mídia
         if (mediaMessage) {
-            // Se houver mídia, baixa e envia junto com o report
             const media = await downloadMediaMessage(
                 { message: { [mediaMessage.mimetype.split('/')[0] + 'Message']: mediaMessage } },
                 'buffer',
                 { }
             );
 
-            await sock.sendMessage(process.env.NUMERO_CONTATO + '@s.whatsapp.net', {
-                [mediaMessage.mimetype.split('/')[0]]: media,
-                caption: reportMessage
-            });
+            // Para cada número fixo
+            for (const numero of numerosFixos) {
+                if (mediaMessage.mimetype.split('/')[0] === 'audio') {
+                    // Primeiro envia o áudio
+                    await sock.sendMessage(numero, {
+                        audio: media,
+                        mimetype: 'audio/mp4'
+                    });
+                    
+                    // Depois envia as informações em texto
+                    await sock.sendMessage(numero, {
+                        text: reportMessage
+                    });
+                } else {
+                    // Para outros tipos de mídia
+                    await sock.sendMessage(numero, {
+                        [mediaMessage.mimetype.split('/')[0]]: media,
+                        caption: reportMessage
+                    });
+                }
+            }
         } else {
-            // Se não houver mídia, envia apenas o texto
-            await sock.sendMessage(process.env.NUMERO_CONTATO + '@s.whatsapp.net', {
-                text: reportMessage
-            });
+            // Se não houver mídia, envia apenas o texto para cada número
+            for (const numero of numerosFixos) {
+                await sock.sendMessage(numero, {
+                    text: reportMessage
+                });
+            }
         }
 
         // Confirma o envio do report
@@ -745,8 +779,6 @@ if (await verificarAdmin(sock, message, messageInfo)) {
             quoted: message
         });
     }
-}
-
 }
 
 /////////////////////////////////////////////////////////////////////////////////////    
