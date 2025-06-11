@@ -1,4 +1,4 @@
-const { Message, Buttons, Client, MessageMedia, downloadMediaMessage } = require('@whiskeysockets/baileys');
+const { Message, Buttons, Client, MessageMedia, downloadMediaMessage } = require("baileys");
 const { verificarAdmin, verificarDono, verificarGrupo, verificarBotAdmin } = require('../lib/privilegios');
 const pool = require('../lib/bd');
 const messages = require('../lib/msg');
@@ -139,11 +139,153 @@ if (await verificarDono(sock, message, messageInfo)) {
 }
 
 
+// COMANDO - ENTRAR EM GRUPO VIA LINK
+if (messageContent.startsWith('!entrar')) {
+    if (await verificarDono(sock, message, messageInfo)) {
+        try {
+            // Extrai o link do comando
+            const link = messageContent.slice(7).trim();
+            
+            // Verifica se foi fornecido um link
+            if (!link) {
+                await sock.sendMessage(message.key.remoteJid, {
+                    text: '❌ Por favor, forneça o link do grupo.\nExemplo: !entrar https://chat.whatsapp.com/xxxxx',
+                    quoted: message
+                });
+                return;
+            }
+
+            // Extrai o código do convite do link
+            const inviteCode = link.split('com/')[1];
+            
+            try {
+                // Tenta entrar no grupo
+                const joinResult = await sock.groupAcceptInvite(inviteCode);
+
+                if (joinResult) {
+                    await sock.sendMessage(message.key.remoteJid, {
+                        text: '✅ Solicitação enviada! Aguardando aprovação do administrador do grupo...',
+                        quoted: message
+                    });
+
+                    // Monitora o status da entrada (aguardando aprovação)
+                    const checkJoinStatus = async () => {
+                        try {
+                            const groupInfo = await sock.groupMetadata(joinResult);
+                            const isParticipant = groupInfo.participants.some(p => p.id === sock.user.id);
+
+                            if (isParticipant) {
+                                await sock.sendMessage(message.key.remoteJid, {
+                                    text: `✅ Entrada aprovada! Agora sou membro do grupo *${groupInfo.subject}*`,
+                                    quoted: message
+                                });
+                            } else {
+                                // Continua verificando a cada 30 segundos
+                                setTimeout(checkJoinStatus, 30000);
+                            }
+                        } catch (error) {
+                            console.error('Erro ao verificar status:', error);
+                        }
+                    };
+
+                    // Inicia o monitoramento
+                    checkJoinStatus();
+
+                } else {
+                    await sock.sendMessage(message.key.remoteJid, {
+                        text: '❌ Não foi possível entrar no grupo. Verifique se o link é válido.',
+                        quoted: message
+                    });
+                }
+
+            } catch (error) {
+                if (error.toString().includes('invite revoked')) {
+                    await sock.sendMessage(message.key.remoteJid, {
+                        text: '❌ Este link de convite foi revogado ou é inválido.',
+                        quoted: message
+                    });
+                } else {
+                    await sock.sendMessage(message.key.remoteJid, {
+                        text: '❌ Ocorreu um erro ao tentar entrar no grupo.',
+                        quoted: message
+                    });
+                }
+            }
+
+        } catch (error) {
+            console.error('Erro ao processar comando !entrar:', error);
+            await sock.sendMessage(message.key.remoteJid, {
+                text: '❌ Ocorreu um erro ao processar o comando.',
+                quoted: message
+            });
+        }
+    }
+}
+
+
+
+if (messageContent === '!sair') {
+    // Verifica se o remetente é o dono do bot
+    if (await verificarDono(sock, message, messageInfo)) {
+        // Verifica se a mensagem foi enviada em um grupo
+        if (message.key.remoteJid.endsWith('@g.us')) {
+            try {
+                // Envia uma mensagem opcional de despedida
+                await sock.sendMessage(message.key.remoteJid, {
+                    text: '👋 Bot saindo do grupo...'
+                }, { quoted: message });
+                
+                // Efetua a saída do grupo
+                await sock.groupLeave(message.key.remoteJid);
+            } catch (error) {
+                console.error('Erro ao sair do grupo:', error);
+                await sock.sendMessage(message.key.remoteJid, {
+                    text: '❌ Ocorreu um erro ao tentar sair do grupo.'
+                }, { quoted: message });
+            }
+        } else {
+            await sock.sendMessage(message.key.remoteJid, {
+                text: '❌ Este comando só pode ser usado em grupos.'
+            }, { quoted: message });
+        }
+    }
+}
 
 
 
 
 
+
+if (messageContent === '!limpar') {
+    // Verifica se o remetente é um admin (ou se preferir, pode ser verificado como dono)
+    if (await verificarAdmin(sock, message, messageInfo)) {
+        try {
+            // Se o bot estiver usando um objeto de armazenamento (store) para os chats,
+            // podemos limpá-lo para "esvaziar" as conversas locais.
+            // OBS.: Essa operação limpa apenas o armazenamento interno do bot.
+            // Se houver um objeto 'sock.chats' do tipo Map, tentamos limpá-lo também.
+            
+            if (sock.chats && typeof sock.chats.clear === 'function') {
+                sock.chats.clear();
+            }
+            
+            // Se você estiver utilizando um store global, como em alguns exemplos:
+            if (global.store && global.store.chats && typeof global.store.chats.clear === 'function') {
+                global.store.chats.clear();
+            }
+            
+            // Envia confirmação para o chat de origem
+            await sock.sendMessage(message.key.remoteJid, {
+                text: '✅ Todas as conversas foram limpas com sucesso!'
+            }, { quoted: message });
+        } catch (error) {
+            console.error('Erro ao limpar as conversas:', error);
+            await sock.sendMessage(message.key.remoteJid, {
+                text: '❌ Ocorreu um erro ao limpar as conversas.'
+            }, { quoted: message });
+        }
+    }
+}
 
 
 
