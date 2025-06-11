@@ -1,4 +1,4 @@
-const { Message, Buttons, Client } = require('@whiskeysockets/baileys');
+const { Message, Buttons, Client } = require("baileys");
 const messages = require('../lib/msg');
 const { getContactName } = require('../lib/util');
 require('dotenv').config();
@@ -219,40 +219,19 @@ if (messageContent.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase(
 
 
 
-if (messageContent.startsWith('!nome')) {
-    try {
-        const mentions = messageInfo.content.mentionedJids;
-        
-        if (!mentions || mentions.length === 0) {
-            await sock.sendMessage(message.key.remoteJid, {
-                text: 'Por favor, mencione um usuário. Exemplo: !nome @usuario',
-                quoted: message
-            });
-            return;
-        }
+const regexPolitica = /\bfaz o l\b|\blula\b|\bbolsonaro\b|\bpt\b|\bpl\b|\blula ladrão\b|\bbozo\b/i;
 
-        const nome = await getContactName(sock, message, messageInfo);
-        
-        if (!nome) {
-            await sock.sendMessage(message.key.remoteJid, {
-                text: 'Não foi possível obter o nome deste contato.',
-                quoted: message
-            });
-            return;
-        }
-
-        await sock.sendMessage(message.key.remoteJid, {
-            text: `O nome dessa pessoa é: *${nome}*`,
-            quoted: message
-        });
-
-    } catch (error) {
-        console.error('Erro ao obter nome:', error);
-        await sock.sendMessage(message.key.remoteJid, {
-            text: 'Ocorreu um erro ao obter o nome.',
-            quoted: message
-        });
-    }
+if (regexPolitica.test(messageContent.toLowerCase()) && isGroup) {
+    const resposta = "*⚠️ AVISO DE MODERAÇÃO ⚠️*\n\n" +
+                    "Discussões políticas não são permitidas!\n" +
+                    "Mantenha o ambiente leve e respeitoso.\n" +
+                    "Vamos manter o foco em interações positivas! 🤝";
+    
+    await sock.sendMessage(message.key.remoteJid, { 
+        text: resposta,
+        quoted: message 
+    }, { quoted: message });
+    return;
 }
 
 
