@@ -1,8 +1,10 @@
-const { Message, Buttons, Client, downloadMediaMessage } = require('@whiskeysockets/baileys');
+const { Message, Buttons, Client, downloadMediaMessage } = require("baileys");
 const { verificarAdmin, verificarDonoBot, verificarGrupo, verificarBotAdmin } = require('../lib/privilegios');
 const messages = require('../lib/msg');
 require('dotenv').config();
 const P = require('pino');
+const fs = require('fs');
+const path = require('path');
 
 async function diversao(sock, message, messageInfo) {
     // Usando a nova estrutura messageInfo para obter conteúdo e tipo da mensagem
@@ -430,6 +432,203 @@ if (await verificarGrupo(sock, message, messageInfo) && await verificarAdmin(soc
 
         }
 }
+
+
+
+
+
+
+if (messageContent.startsWith('!addmatch')) {
+    try {
+        // Verificações de permissão
+        if (!await verificarGrupo(sock, message, messageInfo)) return;
+        if (!await verificarAdmin(sock, message, messageInfo)) return;
+
+        // Verifica se é o grupo correto
+        if (message.key.remoteJid !== '120363418537948318@g.us') {
+            await sock.sendMessage(message.key.remoteJid, {
+                text: '❌ Este comando está disponível apenas em um grupo específico.',
+                quoted: message
+            }, { quoted: message });
+            return;
+        }
+
+        if (message.message?.extendedTextMessage?.contextInfo?.mentionedJid) {
+            const contactId = message.message.extendedTextMessage.contextInfo.mentionedJid[0];
+            const content = messageContent.split(' ');
+
+            if (content.length >= 3) {
+                const name = content.slice(2).join(' ');
+                const fileName = 'match.txt'; // Alterado para usar nome fixo
+                const filePath = path.join(__dirname, '..', 'media', 'match', fileName);
+
+                if (!fs.existsSync(path.dirname(filePath))) {
+                    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+                }
+
+                if (fs.existsSync(filePath)) {
+                    const fileContent = fs.readFileSync(filePath, 'utf8');
+                    
+                    if (fileContent.includes(contactId) || fileContent.toLowerCase().includes(name.toLowerCase())) {
+                        await sock.sendMessage(message.key.remoteJid, {
+                            text: '❌ Esta pessoa já está registrada no sistema de match.',
+                            quoted: message
+                        }, { quoted: message });
+                        return;
+                    }
+                }
+
+                const saveString = `${name}/${contactId}\n`;
+                fs.appendFileSync(filePath, saveString);
+
+                await sock.sendMessage(message.key.remoteJid, {
+                    text: '✅ Contato adicionado com sucesso ao sistema de match.',
+                    quoted: message
+                }, { quoted: message });
+
+            } else {
+                await sock.sendMessage(message.key.remoteJid, {
+                    text: '❌ Formato incorreto. Use: !addmatch @pessoa Nome',
+                    quoted: message
+                }, { quoted: message });
+            }
+        } else {
+            await sock.sendMessage(message.key.remoteJid, {
+                text: '❌ Por favor, mencione um contato com o comando.',
+                quoted: message
+            }, { quoted: message });
+        }
+    } catch (error) {
+        console.error('Erro ao adicionar match:', error);
+        await sock.sendMessage(message.key.remoteJid, {
+            text: '❌ Ocorreu um erro ao adicionar o contato.',
+            quoted: message
+        }, { quoted: message });
+    }
+}
+
+
+
+
+
+
+if (messageContent.startsWith('!match') || /^\d+\s+.+/.test(messageContent)) {
+    try {
+        if (messageInfo.metadata.isGroup) {
+            return;
+        }
+
+        const filePath = path.join(__dirname, '..', 'media', 'match', 'match.txt');
+
+        if (!fs.existsSync(filePath)) {
+            await sock.sendMessage(message.key.remoteJid, {
+                text: '❌ Não há pessoas registradas no sistema de match.',
+                quoted: message
+            });
+            return;
+        }
+
+        // Lê o conteúdo do arquivo e verifica se o usuário está registrado
+        const fileContent = fs.readFileSync(filePath, 'utf8');
+        const lines = fileContent.split('\n').filter(line => line.trim());
+        const senderJid = message.key.remoteJid;
+        
+        // Verifica se o remetente está no arquivo match.txt
+        const isUserRegistered = lines.some(line => line.includes(senderJid));
+        
+        if (!isUserRegistered) {
+            await sock.sendMessage(message.key.remoteJid, {
+                text: '❌ Você não está registrado no sistema de match. Apenas usuários registrados podem usar este comando.',
+                quoted: message
+            });
+            return;
+        }
+
+        if (messageContent === '!match') {
+            let matchList = '*LISTA DE PESSOAS DISPONÍVEIS:*\n\n';
+            lines.forEach((line, index) => {
+                const name = line.split('/')[0];
+                matchList += `${index + 1}. ${name}\n`;
+            });
+
+            matchList += '\n*COMO USAR:*\n';
+            matchList += '1. Escolha um número da lista\n';
+            matchList += '2. Digite o número e sua dica\n'; 
+            matchList += '*Exemplo:* 1 Oi, sou alto e legal';
+
+            await sock.sendMessage(message.key.remoteJid, {
+                text: matchList,
+                quoted: message
+            });
+            return;
+        } 
+
+        let number, hint;
+        const newFormatMatch = messageContent.match(/^(\d+)\s+(.+)$/);
+        const oldFormatMatch = messageContent.match(/^!match\s+(\d+)\s+(.+)$/);
+
+        if (newFormatMatch) {
+            [, number, hint] = newFormatMatch;
+        } else if (oldFormatMatch) {
+            [, number, hint] = oldFormatMatch;
+        }
+
+        if (number && hint) {
+            number = parseInt(number);
+            if (number < 1 || number > lines.length) {
+                await sock.sendMessage(message.key.remoteJid, {
+                    text: '❌ Número inválido! Use !match para ver a lista.',
+                    quoted: message
+                });
+                return;
+            }
+
+            const selectedLine = lines[number - 1];
+            const [name, contactId] = selectedLine.split('/');
+
+            const matchMessage = `Olá *${name}*\nVocê recebeu um match\n*Dica:* ${hint}`;
+            
+            await sock.sendMessage(contactId, {
+                text: matchMessage
+            });
+
+            await sock.sendMessage(message.key.remoteJid, {
+                text: '✅ Match enviado com sucesso!',
+                quoted: message
+            });
+            return;
+        }
+
+        if (/^(\d+)$/.test(messageContent) || /^!match\s+\d+$/.test(messageContent)) {
+            await sock.sendMessage(message.key.remoteJid, {
+                text: '❌ Você precisa escrever uma dica após o número!\nExemplo: 1 Oi, sou alto e legal',
+                quoted: message
+            });
+            return;
+        }
+
+        if (!messageContent.startsWith('!match')) {
+            await sock.sendMessage(message.key.remoteJid, {
+                text: '❌ Formato incorreto!\n\n*COMO USAR:*\n1. Use !match para ver a lista\n2. Digite o número e sua dica\nExemplo: 1 Oi, sou alto e legal',
+                quoted: message
+            });
+        }
+
+    } catch (error) {
+        console.error('Erro ao processar match:', error);
+        await sock.sendMessage(message.key.remoteJid, {
+            text: '❌ Ocorreu um erro ao processar o match.',
+            quoted: message
+        });
+    }
+}
+
+
+
+
+
+
+
 
 
 
